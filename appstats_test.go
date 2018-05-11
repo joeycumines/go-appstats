@@ -894,3 +894,33 @@ func TestNewStatsDService_keyFunc(t *testing.T) {
 		t.Fatal("unexpected key", key, ok)
 	}
 }
+
+func TestQuoteString(t *testing.T) {
+	testCases := []struct {
+		Input  string
+		Output string
+	}{
+		{
+			Input:  ``,
+			Output: `""`,
+		},
+		{
+			Input:  `  DS asdas !$@s `,
+			Output: `"  DS asdas !$@s "`,
+		},
+		{
+			Input:  ` "as\"d  DS as/d\a\\s \\\!$@s `,
+			Output: `" \"as\\\"d  DS as/d\\a\\\\s \\\\\\!$@s "`,
+		},
+	}
+
+	for i, testCase := range testCases {
+		name := fmt.Sprintf("TestQuoteString_%d", i+1)
+
+		output := QuoteString(testCase.Input)
+
+		if output != testCase.Output {
+			t.Errorf("%s output '%s' != expected '%s'", name, output, testCase.Output)
+		}
+	}
+}

@@ -381,6 +381,17 @@ func signedMulOverflows(a, b int64) bool {
 	return c/b != a
 }
 
+// QuoteString will surround a string in double quotes, and escape all double quotes within the string with a
+// backslash, and all backslashes with a backslash, as well.
+func QuoteString(s string) string {
+	// backslashes must be escaped first
+	s = strings.Replace(s, `\`, `\\`, -1)
+	// then double quotes
+	s = strings.Replace(s, `"`, `\"`, -1)
+	// and quote the lot
+	return `"` + s + `"`
+}
+
 type sortStringsBytesCompare []string
 
 func (s sortStringsBytesCompare) Less(i, j int) bool {

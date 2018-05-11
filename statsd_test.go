@@ -371,7 +371,7 @@ func TestStatsDBucket_Unique(t *testing.T) {
 				if bucket != "bucket_1,tag_2=value" {
 					t.Error("unexpected bucket", bucket)
 				}
-				if v != "15" {
+				if v != `"15"` {
 					t.Error("unexpected v", v)
 				}
 			},

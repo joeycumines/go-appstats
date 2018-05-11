@@ -119,10 +119,11 @@ func (b statsDBucket) Histogram(value interface{}) {
 	}
 }
 
-// Unique sends the value to the bucket by passing through to statsd.Client.Unique after converting it to a string.
+// Unique sends the value to the bucket by passing through to statsd.Client.Unique after converting it to a string,
+// applying QuoteString to it, in order to ensure that it parses properly.
 func (b statsDBucket) Unique(value interface{}) {
 	if bucket := b.bucketKey(); bucket != "" {
-		b.service.client.Unique(bucket, fmt.Sprintf("%v", value))
+		b.service.client.Unique(bucket, QuoteString(fmt.Sprintf("%v", value)))
 	}
 }
 
