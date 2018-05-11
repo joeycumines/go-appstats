@@ -86,8 +86,8 @@ type (
 // DefaultBucketKeyFunc is the default func used to generate bucket keys, it applies SanitiseKey to the bucket,
 // tag keys, and tag values, ensuring there is a non-empty bucket, and filtering any empty tags and values, note
 // that only the LAST value for each tag BEFORE FILTERING, so a tag with key "key" and  values ("value", "123") would
-// be appended as ",key", as SanitiseKey("123") returns "".
-// The output format is like "bucket,tag1,tag2=value,tag3=id_value", which aligns with InfluxDB's line protocol spec
+// not be appended, as SanitiseKey("123") returns "".
+// The output format is like "bucket,tag1=value,tag2=id_value", which aligns with InfluxDB's line protocol spec
 // https://docs.influxdata.com/influxdb/v1.4/write_protocols/line_protocol_tutorial
 func DefaultBucketKeyFunc(info BucketInfo) (string, bool) {
 	bucket := bytes.NewBufferString(SanitiseKey(info.Bucket))
@@ -117,11 +117,10 @@ func DefaultBucketKeyFunc(info BucketInfo) (string, bool) {
 	sort.Sort(tags)
 
 	for _, tag := range tags {
-		bucket.WriteRune(',')
-		bucket.WriteString(tag)
-
 		if numValues := len(values[tag]); numValues > 0 {
 			if value := SanitiseKey(values[tag][numValues-1]); value != "" {
+				bucket.WriteRune(',')
+				bucket.WriteString(tag)
 				bucket.WriteRune('=')
 				bucket.WriteString(value)
 			}

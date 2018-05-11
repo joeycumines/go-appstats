@@ -815,7 +815,7 @@ func TestDefaultBucketKeyFunc(t *testing.T) {
 					"tag": {``},
 				},
 			},
-			Key: "bucket,tag",
+			Key: "bucket",
 			Ok:  true,
 		},
 		{
@@ -825,7 +825,7 @@ func TestDefaultBucketKeyFunc(t *testing.T) {
 					"tag": nil,
 				},
 			},
-			Key: "bucket,tag",
+			Key: "bucket",
 			Ok:  true,
 		},
 		{
@@ -842,7 +842,7 @@ func TestDefaultBucketKeyFunc(t *testing.T) {
 					"12313":     nil,
 				},
 			},
-			Key: "bucket_one.two-tree,a1231,one_two=value_1_,tag_2,tag_3=two,z,ñ=adads",
+			Key: "bucket_one.two-tree,one_two=value_1_,tag_3=two,ñ=adads",
 			Ok:  true,
 		},
 	}

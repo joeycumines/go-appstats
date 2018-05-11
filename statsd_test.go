@@ -259,7 +259,7 @@ func TestStatsDBucket_Count(t *testing.T) {
 		mockStatsDClient{
 			count: func(bucket string, n interface{}) {
 				calls++
-				if bucket != "bucket_1,tag_1,tag_2=value" {
+				if bucket != "bucket_1,tag_2=value" {
 					t.Error("unexpected bucket", bucket)
 				}
 				if n != 15 {
@@ -287,7 +287,7 @@ func TestStatsDBucket_Increment(t *testing.T) {
 		mockStatsDClient{
 			increment: func(bucket string) {
 				calls++
-				if bucket != "bucket_1,tag_1,tag_2=value" {
+				if bucket != "bucket_1,tag_2=value" {
 					t.Error("unexpected bucket", bucket)
 				}
 			},
@@ -312,7 +312,7 @@ func TestStatsDBucket_Gauge(t *testing.T) {
 		mockStatsDClient{
 			gauge: func(bucket string, n interface{}) {
 				calls++
-				if bucket != "bucket_1,tag_1,tag_2=value" {
+				if bucket != "bucket_1,tag_2=value" {
 					t.Error("unexpected bucket", bucket)
 				}
 				if n != 15 {
@@ -340,7 +340,7 @@ func TestStatsDBucket_Histogram(t *testing.T) {
 		mockStatsDClient{
 			histogram: func(bucket string, n interface{}) {
 				calls++
-				if bucket != "bucket_1,tag_1,tag_2=value" {
+				if bucket != "bucket_1,tag_2=value" {
 					t.Error("unexpected bucket", bucket)
 				}
 				if n != 15 {
@@ -368,7 +368,7 @@ func TestStatsDBucket_Unique(t *testing.T) {
 		mockStatsDClient{
 			unique: func(bucket string, v string) {
 				calls++
-				if bucket != "bucket_1,tag_1,tag_2=value" {
+				if bucket != "bucket_1,tag_2=value" {
 					t.Error("unexpected bucket", bucket)
 				}
 				if v != "15" {
@@ -407,7 +407,7 @@ func TestStatsDBucket_Timing(t *testing.T) {
 		mockStatsDClient{
 			timing: func(bucket string, n interface{}) {
 				calls++
-				if bucket != "bucket_1,tag_1,tag_2=value" {
+				if bucket != "bucket_1,tag_2=value" {
 					t.Error("unexpected bucket", bucket)
 				}
 				if n != int(time.Second*5/time.Millisecond) {
