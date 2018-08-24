@@ -29,6 +29,9 @@ import (
 	"math"
 	"bytes"
 	"sort"
+	"errors"
+	"reflect"
+	"runtime"
 )
 
 type (
@@ -81,7 +84,79 @@ type (
 
 	// BucketKeyFunc is used to generate a bucket key string for actually sending the metrics.
 	BucketKeyFunc func(info BucketInfo) (name string, ok bool)
+
+	// Tagger models something that may apply additional tags to a Bucket, and is intended to be used to provide
+	// optional / generic tag / externally validated tag configuration, when implementing your own stats utilities.
+	Tagger func(bucket Bucket) (Bucket, error)
 )
+
+func TagMapStringInterface(m map[string]interface{}) Tagger {
+	return func(bucket Bucket) (Bucket, error) {
+		for k, v := range m {
+			bucket = bucket.Tag(k, v)
+		}
+		return bucket, nil
+	}
+}
+
+func TagMapInterfaceInterface(m map[interface{}]interface{}) Tagger {
+	return func(bucket Bucket) (Bucket, error) {
+		for k, v := range m {
+			bucket = bucket.Tag(k, v)
+		}
+		return bucket, nil
+	}
+}
+
+func TagMapStringString(m map[string]string) Tagger {
+	return func(bucket Bucket) (Bucket, error) {
+		for k, v := range m {
+			bucket = bucket.Tag(k, v)
+		}
+		return bucket, nil
+	}
+}
+
+// Apply will pass bucket to the tagger, and will error if the bucket is nil, and simply return the original bucket
+// if the receiver is nil, note that the returned bucket is itself validated to be non-nil, so this method will
+// never return (nil, nil).
+func (t Tagger) Apply(bucket Bucket) (Bucket, error) {
+	if bucket == nil {
+		return nil, errors.New("appstats.Tagger.Apply nil bucket")
+	}
+	if t == nil {
+		return bucket, nil
+	}
+	bucket, err := t(bucket)
+	if err != nil {
+		return nil, fmt.Errorf("appstats.Tagger.Apply tagger error: %s", err.Error())
+	}
+	if bucket == nil {
+		name := "unknown"
+		ptr := reflect.ValueOf(t).Pointer()
+		if ptr != 0 {
+			name = runtime.FuncForPC(ptr).Name()
+		}
+		return nil, fmt.Errorf("appstats.Tagger.Apply nil bucket for tagger: %s", name)
+	}
+	return bucket, nil
+}
+
+// ApplyTaggers will pass bucket through all taggers provided, and will return an error if bucket is nil, or applying
+// any of the taggers failed.
+func ApplyTaggers(bucket Bucket, taggers ...Tagger) (Bucket, error) {
+	if bucket == nil {
+		return nil, errors.New("appstats.ApplyTaggers nil bucket")
+	}
+	for i, tagger := range taggers {
+		var err error
+		bucket, err = tagger.Apply(bucket)
+		if err != nil {
+			return nil, fmt.Errorf("appstats.ApplyTaggers tagger error at index %d: %s", i, err.Error())
+		}
+	}
+	return bucket, nil
+}
 
 // DefaultBucketKeyFunc is the default func used to generate bucket keys, it applies SanitiseKey to the bucket,
 // tag keys, and tag values, ensuring there is a non-empty bucket, and filtering any empty tags and values, note

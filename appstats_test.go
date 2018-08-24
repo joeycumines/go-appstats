@@ -24,6 +24,7 @@ import (
 	"time"
 	"github.com/go-test/deep"
 	"reflect"
+	"errors"
 )
 
 func TestBucketInfo_Tag_nilReceiver(t *testing.T) {
@@ -492,47 +493,47 @@ func TestTimingToDuration(t *testing.T) {
 			Ok:     true,
 		},
 		{ // + just fits into an int64
-			Value: "9223372036854775807",
-			Multi: time.Nanosecond,
+			Value:  "9223372036854775807",
+			Multi:  time.Nanosecond,
 			Result: 9223372036854775807,
-			Ok: true,
+			Ok:     true,
 		},
 		{ // - just fits into an int64
-			Value: "-9223372036854775808",
-			Multi: time.Nanosecond,
+			Value:  "-9223372036854775808",
+			Multi:  time.Nanosecond,
 			Result: -9223372036854775808,
-			Ok: true,
+			Ok:     true,
 		},
 		{ // + overflow
-			Value: "9223372036854775808",
-			Multi: time.Nanosecond,
+			Value:  "9223372036854775808",
+			Multi:  time.Nanosecond,
 			Result: 0,
-			Ok: false,
+			Ok:     false,
 		},
 		{ // - overflow
-			Value: "-9223372036854775809",
-			Multi: time.Nanosecond,
+			Value:  "-9223372036854775809",
+			Multi:  time.Nanosecond,
 			Result: 0,
-			Ok: false,
+			Ok:     false,
 		},
 		{ // multiplier overflows
-			Value: "999999999999",
-			Multi: time.Hour,
+			Value:  "999999999999",
+			Multi:  time.Hour,
 			Result: 0,
-			Ok: false,
+			Ok:     false,
 		},
 		{ // overflows int64 on multi but passes number parse
-			Value: "512438192184912 x 10 ^ 3",
-			Multi: time.Minute,
+			Value:  "512438192184912 x 10 ^ 3",
+			Multi:  time.Minute,
 			Result: 0,
-			Ok: false,
+			Ok:     false,
 		},
 		{ // this one passes through
-			Value: "512438192184912.1 x 10 ^ 3",
-			Multi: time.Nanosecond,
+			Value:  "512438192184912.1 x 10 ^ 3",
+			Multi:  time.Nanosecond,
 			Result: 512438192184912100,
-			Ok: true,
-			Delta: 50,
+			Ok:     true,
+			Delta:  50,
 		},
 		{
 			Value:  914.12341259,
@@ -556,52 +557,52 @@ func TestTimingToDuration(t *testing.T) {
 			Delta:  0,
 		},
 		{ // very large number requiring parsing
-			Value: `9223372036844775807.01`,
-			Multi: time.Nanosecond,
+			Value:  `9223372036844775807.01`,
+			Multi:  time.Nanosecond,
 			Result: 9223372036844775807,
-			Ok: true,
-			Delta: 1000,
+			Ok:     true,
+			Delta:  1000,
 		},
 		{ // very small number requiring parsing
-			Value: `-9223372036844775808.01`,
-			Multi: time.Nanosecond,
+			Value:  `-9223372036844775808.01`,
+			Multi:  time.Nanosecond,
 			Result: -9223372036844775808,
-			Ok: true,
-			Delta: 1000,
+			Ok:     true,
+			Delta:  1000,
 		},
 		{ // + detected out of bounds
-			Value: `9223372036844775807.01E100`,
-			Multi: time.Nanosecond,
+			Value:  `9223372036844775807.01E100`,
+			Multi:  time.Nanosecond,
 			Result: 0,
-			Ok: false,
-			Delta: 0,
+			Ok:     false,
+			Delta:  0,
 		},
 		{ // - detected out of bounds
-			Value: `-9223372036844775808.01E100`,
-			Multi: time.Nanosecond,
+			Value:  `-9223372036844775808.01E100`,
+			Multi:  time.Nanosecond,
 			Result: 0,
-			Ok: false,
-			Delta: 0,
+			Ok:     false,
+			Delta:  0,
 		},
 		{ // bad multi
-			Value: time.Second,
-			Multi: 0,
+			Value:  time.Second,
+			Multi:  0,
 			Result: 0,
-			Ok: false,
-			Delta: 0,
+			Ok:     false,
+			Delta:  0,
 		},
 		{ // bad multi
-			Value: time.Second,
-			Multi: -1,
+			Value:  time.Second,
+			Multi:  -1,
 			Result: 0,
-			Ok: false,
-			Delta: 0,
+			Ok:     false,
+			Delta:  0,
 		},
 		{ // edge case test...
-			Value: "-922337203685477580 E 1",
-			Multi: time.Nanosecond,
+			Value:  "-922337203685477580 E 1",
+			Multi:  time.Nanosecond,
 			Result: -9223372036854775808,
-			Ok: true,
+			Ok:     true,
 		},
 		{
 			Value:  213214.321,
@@ -923,4 +924,275 @@ func TestQuoteString(t *testing.T) {
 			t.Errorf("%s output '%s' != expected '%s'", name, output, testCase.Output)
 		}
 	}
+}
+
+func TestTagger_Apply_nilBucket(t *testing.T) {
+	var tagger Tagger = func(bucket Bucket) (Bucket, error) {
+		panic("no")
+	}
+	b, err := tagger.Apply(nil)
+	if err == nil || err.Error() != "appstats.Tagger.Apply nil bucket" {
+		t.Fatal(b, err)
+	}
+}
+
+func TestTagger_Apply_nilReceiver(t *testing.T) {
+	var tagger Tagger
+
+	in := &mockBucket{}
+
+	out, err := tagger.Apply(in)
+
+	if out != in || err != nil {
+		t.Fatal(out, err)
+	}
+}
+
+func TestTagger_Apply_error(t *testing.T) {
+	in := &mockBucket{}
+
+	var tagger Tagger = func(bucket Bucket) (Bucket, error) {
+		if bucket != in {
+			t.Error(bucket)
+		}
+
+		return new(mockBucket), errors.New("some_error")
+	}
+
+	out, err := tagger.Apply(in)
+
+	if out != nil || err == nil || err.Error() != "appstats.Tagger.Apply tagger error: some_error" {
+		t.Error(out, err)
+	}
+}
+
+func debugTaggerReturnNil(bucket Bucket) (Bucket, error) {
+	if bucket == nil {
+		panic("should not be nil but this is for unique")
+	}
+	return nil, nil
+}
+
+func TestTagger_Apply_nilReturn(t *testing.T) {
+	out, err := Tagger(debugTaggerReturnNil).Apply(new(mockBucket))
+
+	if out != nil || err == nil || err.Error() != "appstats.Tagger.Apply nil bucket for tagger: github.com/joeycumines/go-appstats.debugTaggerReturnNil" {
+		t.Error(out, err)
+	}
+}
+
+func TestTagger_Apply_success(t *testing.T) {
+	in := &mockBucket{}
+
+	expected := &mockBucket{}
+
+	var tagger Tagger = func(bucket Bucket) (Bucket, error) {
+		if bucket != in {
+			t.Error(bucket)
+		}
+
+		return expected, nil
+	}
+
+	out, err := tagger.Apply(in)
+
+	if out != expected || err != nil {
+		t.Error(out, err)
+	}
+}
+
+func TestApplyTaggers_nilBucket(t *testing.T) {
+	b, err := ApplyTaggers(nil)
+	if b != nil || err == nil || err.Error() != "appstats.ApplyTaggers nil bucket" {
+		t.Error(b, err)
+	}
+}
+
+func TestApplyTaggers_error(t *testing.T) {
+	var called bool
+
+	one := new(mockBucket)
+	two := new(mockBucket)
+
+	out, err := ApplyTaggers(
+		one,
+		func(bucket Bucket) (Bucket, error) {
+			if called {
+				t.Error("called more than once")
+			}
+			called = true
+			if bucket != one {
+				t.Error(bucket)
+			}
+			return two, nil
+		},
+		func(bucket Bucket) (Bucket, error) {
+			if bucket != two {
+				t.Error(bucket)
+			}
+			return nil, errors.New("some_error")
+		},
+		func(bucket Bucket) (Bucket, error) {
+			panic("no")
+		},
+	)
+
+	if out != nil || err == nil || err.Error() != "appstats.ApplyTaggers tagger error at index 1: appstats.Tagger.Apply tagger error: some_error" {
+		t.Error(out, err)
+	}
+
+	if !called {
+		t.Error(called)
+	}
+}
+
+func TestApplyTaggers_success(t *testing.T) {
+	var count int
+
+	one := new(mockBucket)
+	two := new(mockBucket)
+	three := new(mockBucket)
+	four := new(mockBucket)
+
+	out, err := ApplyTaggers(
+		one,
+		func(bucket Bucket) (Bucket, error) {
+			if count != 0 {
+				t.Error(count)
+			}
+			count++
+			if bucket != one {
+				t.Error(bucket)
+			}
+			return two, nil
+		},
+		func(bucket Bucket) (Bucket, error) {
+			if count != 1 {
+				t.Error(count)
+			}
+			count++
+			if bucket != two {
+				t.Error(bucket)
+			}
+			return three, nil
+		},
+		func(bucket Bucket) (Bucket, error) {
+			if count != 2 {
+				t.Error(count)
+			}
+			count++
+			if bucket != three {
+				t.Error(bucket)
+			}
+			return four, nil
+		},
+	)
+
+	if out != four || err != nil {
+		t.Error(out, err)
+	}
+
+	if count != 3 {
+		t.Error(count)
+	}
+}
+
+func TestTagMap_all(t *testing.T) {
+	result := make(map[interface{}][]interface{})
+
+	var bucket *mockBucket
+
+	bucket = &mockBucket{
+		tag: func(key interface{}, values ...interface{}) Bucket {
+			if _, ok := result[key]; !ok {
+				result[key] = nil
+			}
+			result[key] = append(result[key], values...)
+			return bucket
+		},
+	}
+
+	randoStruct := new(struct{})
+
+	b, err := ApplyTaggers(
+		bucket,
+		TagMapStringString(
+			map[string]string{
+				"one": "1",
+				"two": "1",
+			},
+		),
+		TagMapStringInterface(
+			map[string]interface{}{
+				"two":   2,
+				"three": "1",
+			},
+		),
+		TagMapInterfaceInterface(
+			map[interface{}]interface{}{
+				"one": randoStruct,
+				4:     true,
+			},
+		),
+	)
+	if b != bucket || err != nil {
+		t.Fatal(b, err)
+	}
+
+	if diff := deep.Equal(
+		result,
+		map[interface{}][]interface{}{
+			"one": {
+				"1",
+				randoStruct,
+			},
+			"two": {
+				"1",
+				2,
+			},
+			"three": {
+				"1",
+			},
+			4: {
+				true,
+			},
+		},
+	); diff != nil {
+		t.Fatal(diff)
+	}
+}
+
+type mockBucket struct {
+	tag func(key interface{}, values ... interface{}) Bucket
+}
+
+func (m *mockBucket) Tag(key interface{}, values ... interface{}) Bucket {
+	if m != nil && m.tag != nil {
+		return m.tag(key, values...)
+	}
+	panic("implement me")
+}
+
+func (m *mockBucket) Count(n interface{}) {
+	panic("implement me")
+}
+
+func (m *mockBucket) Increment() {
+	panic("implement me")
+}
+
+func (m *mockBucket) Gauge(value interface{}) {
+	panic("implement me")
+}
+
+func (m *mockBucket) Histogram(value interface{}) {
+	panic("implement me")
+}
+
+func (m *mockBucket) Unique(value interface{}) {
+	panic("implement me")
+}
+
+func (m *mockBucket) Timing(value interface{}) {
+	panic("implement me")
 }
