@@ -19,19 +19,19 @@
 package appstats
 
 import (
-	"io"
+	"bytes"
+	"errors"
 	"fmt"
-	"time"
+	"io"
+	"math/big"
+	"reflect"
 	"regexp"
+	"runtime"
+	"sort"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
-	"math"
-	"bytes"
-	"sort"
-	"errors"
-	"reflect"
-	"runtime"
 )
 
 type (
@@ -82,7 +82,9 @@ type (
 		Tags   map[string][]string
 	}
 
-	// BucketKeyFunc is used to generate a bucket key string for actually sending the metrics.
+	// BucketKeyFunc is used to generate a bucket key string for actually sending the metrics, note that while
+	// this implementation provides DefaultBucketKeyFunc and NewBucketKeyFunc, it is completely acceptable to simply
+	// implement your own.
 	BucketKeyFunc func(info BucketInfo) (name string, ok bool)
 
 	// Tagger models something that may apply additional tags to a Bucket, and is intended to be used to provide
@@ -90,6 +92,7 @@ type (
 	Tagger func(bucket Bucket) (Bucket, error)
 )
 
+// TagMapStringInterface returns a new Tagger that will apply all keys and values to a bucket.
 func TagMapStringInterface(m map[string]interface{}) Tagger {
 	return func(bucket Bucket) (Bucket, error) {
 		for k, v := range m {
@@ -99,6 +102,7 @@ func TagMapStringInterface(m map[string]interface{}) Tagger {
 	}
 }
 
+// TagMapInterfaceInterface returns a new Tagger that will apply all keys and values to a bucket.
 func TagMapInterfaceInterface(m map[interface{}]interface{}) Tagger {
 	return func(bucket Bucket) (Bucket, error) {
 		for k, v := range m {
@@ -108,6 +112,7 @@ func TagMapInterfaceInterface(m map[interface{}]interface{}) Tagger {
 	}
 }
 
+// TagMapStringString returns a new Tagger that will apply all keys and values to a bucket.
 func TagMapStringString(m map[string]string) Tagger {
 	return func(bucket Bucket) (Bucket, error) {
 		for k, v := range m {
@@ -165,44 +170,58 @@ func ApplyTaggers(bucket Bucket, taggers ...Tagger) (Bucket, error) {
 // The output format is like "bucket,tag1=value,tag2=id_value", which aligns with InfluxDB's line protocol spec
 // https://docs.influxdata.com/influxdb/v1.4/write_protocols/line_protocol_tutorial
 func DefaultBucketKeyFunc(info BucketInfo) (string, bool) {
-	bucket := bytes.NewBufferString(SanitiseKey(info.Bucket))
+	return defaultBucketKeyFunc(info)
+}
 
-	if bucket.Len() == 0 {
-		return "", false
+var defaultBucketKeyFunc = NewBucketKeyFunc(SanitiseKey)
+
+// NewBucketKeyFunc provides the same implementation as DefaultBucketKeyFunc, but with the ability to specify a
+// custom key sanitiser, note that it will panic if keySanitiser is nil.
+func NewBucketKeyFunc(keySanitiser func(value string) string) BucketKeyFunc {
+	if keySanitiser == nil {
+		panic(errors.New("appstats.NewBucketKeyFunc nil key sanitiser"))
 	}
 
-	tags := make(sortStringsBytesCompare, 0, len(info.Tags))
-	values := make(map[string][]string)
+	return func(info BucketInfo) (name string, ok bool) {
+		bucket := bytes.NewBufferString(keySanitiser(info.Bucket))
 
-	for tag, tagValues := range info.Tags {
-		tag = SanitiseKey(tag)
-
-		if tag == "" {
-			continue
+		if bucket.Len() == 0 {
+			return "", false
 		}
 
-		if _, ok := values[tag]; !ok {
-			tags = append(tags, tag)
-			values[tag] = nil
+		tags := make(sortStringsBytesCompare, 0, len(info.Tags))
+		values := make(map[string][]string)
+
+		for tag, tagValues := range info.Tags {
+			tag = keySanitiser(tag)
+
+			if tag == "" {
+				continue
+			}
+
+			if _, ok := values[tag]; !ok {
+				tags = append(tags, tag)
+				values[tag] = nil
+			}
+
+			values[tag] = append(values[tag], tagValues...)
 		}
 
-		values[tag] = append(values[tag], tagValues...)
-	}
+		sort.Sort(tags)
 
-	sort.Sort(tags)
-
-	for _, tag := range tags {
-		if numValues := len(values[tag]); numValues > 0 {
-			if value := SanitiseKey(values[tag][numValues-1]); value != "" {
-				bucket.WriteRune(',')
-				bucket.WriteString(tag)
-				bucket.WriteRune('=')
-				bucket.WriteString(value)
+		for _, tag := range tags {
+			if numValues := len(values[tag]); numValues > 0 {
+				if value := keySanitiser(values[tag][numValues-1]); value != "" {
+					bucket.WriteRune(',')
+					bucket.WriteString(tag)
+					bucket.WriteRune('=')
+					bucket.WriteString(value)
+				}
 			}
 		}
-	}
 
-	return bucket.String(), true
+		return bucket.String(), true
+	}
 }
 
 // NewStatsDService wraps https://github.com/alexcesaro/statsd, note both args may be nil, defaults will be used.
@@ -225,7 +244,7 @@ func NewStatsDService(
 // Tag values to a key (or just ensures the key exists, if there are no values), note that the returned value will
 // not modify the value of the source but MAY NOT be a complete deep copy.
 func (b *BucketInfo) Tag(key interface{}, values ... interface{}) *BucketInfo {
-	keyStr := fmt.Sprintf("%v", key)
+	keyStr := fmt.Sprint(key)
 
 	r := &BucketInfo{
 		Tags: map[string][]string{
@@ -246,7 +265,7 @@ func (b *BucketInfo) Tag(key interface{}, values ... interface{}) *BucketInfo {
 	vn = append(vn, r.Tags[keyStr]...)
 
 	for _, v := range values {
-		vn = append(vn, fmt.Sprintf("%v", v))
+		vn = append(vn, fmt.Sprint(v))
 	}
 
 	r.Tags[keyStr] = vn
@@ -296,8 +315,8 @@ func SanitiseKey(value string) string {
 }
 
 // TimingToDuration attempts to convert a value to a duration to be used in timing calls, normalising various data
-// types, supporting a multiplier for types without clearly defined units, note that time.Time values will be
-// calculated as now - value, and a multi <= 0 will always return (0, false)
+// types, supporting a multiplier for types without clearly defined units, and takes advantage of the
+// trunc-towards-zero behavior of the big.Float.Int64 method, it also supports strings generated from time.Duration.
 func TimingToDuration(value interface{}, multi time.Duration) (d time.Duration, ok bool) {
 	if multi <= 0 {
 		return
@@ -308,6 +327,7 @@ func TimingToDuration(value interface{}, multi time.Duration) (d time.Duration, 
 		d, ok = timeNow().Sub(v), true
 
 		return
+
 	case time.Duration:
 		d, ok = v, true
 
@@ -315,69 +335,54 @@ func TimingToDuration(value interface{}, multi time.Duration) (d time.Duration, 
 	}
 
 	var (
+		valueString = fmt.Sprint(value)
 		integer     int64
 		fractional  float64
 		exponential int
 	)
 
-	integer, fractional, exponential, ok = StringToNumber(fmt.Sprintf("%v", value))
-
-	if !ok {
+	if integer, fractional, exponential, ok = StringToNumber(valueString); !ok {
+		// fallback to parsing as time.Duration
+		var err error
+		d, err = time.ParseDuration(valueString)
+		ok = err == nil
 		return
 	}
 
-	var (
-		a int64
-		b int64
-	)
+	// start with the integer component
+	f := new(big.Float).
+		SetInt64(integer)
 
-	if fractional == 0 && exponential == 0 {
-		a, b = integer, int64(multi)
-	} else {
-		float := (float64(integer) + fractional) * math.Pow10(exponential)
+	// add the fractional component
+	f.Add(f, big.NewFloat(fractional))
 
-		if float > float64(mostPositive) || float < float64(mostNegative) {
-			ok = false
-
+	// apply any exponential component
+	if exponential < 0 {
+		var e *big.Float
+		e, ok = new(big.Float).
+			SetString("1" + strings.Repeat("0", exponential*-1))
+		if !ok {
 			return
 		}
-
-		if i := int64(float); float64(i) == float {
-			a, b = i, int64(multi)
-		} else if signedMulOverflows(i, int64(multi)) {
-			ok = false
-
-			return
-		} else if f := float * float64(multi); f <= float64(mostPositive) && f >= float64(mostNegative) {
-			a, b = int64(f), 1
-		} else {
-			ok = false
-
+		f.Quo(f, e)
+	} else if exponential > 0 {
+		var e *big.Float
+		e, ok = new(big.Float).
+			SetString("1" + strings.Repeat("0", exponential))
+		if !ok {
 			return
 		}
-
-		if float >= 0 {
-			if a < 0 {
-				ok = false
-
-				return
-			}
-		} else {
-			if a >= 0 {
-				ok = false
-
-				return
-			}
-		}
+		f.Mul(f, e)
 	}
 
-	ok = !signedMulOverflows(a, b)
+	// apply the multiplier
+	f.Mul(f, new(big.Float).SetInt64(int64(multi)))
 
-	if !ok {
-		return
-	}
+	// convert the big.Float to an int64 (trucs towards zero)
+	i, _ := f.Int64()
 
-	d = time.Duration(a * b)
+	// and that's our timing
+	d = time.Duration(i)
 
 	return
 }
@@ -430,31 +435,10 @@ func StringToNumber(s string) (integer int64, fractional float64, exponential in
 	return
 }
 
-const (
-	mostPositive = 1<<63 - 1
-	mostNegative = -(mostPositive + 1)
-)
-
 var (
-	regexStringToNumber *regexp.Regexp
+	regexStringToNumber = regexp.MustCompile(`^(?i:((?:)|(?:\+)|(?:-))(\d+)(?:(?:)|(?:\.(\d+)))(?:(?:)|(?:(?:(?:x10\^)|(?:\*10\^)|(?:e))((?:(?:)|(?:\+)|(?:-))\d+))))$`)
 	timeNow             = time.Now
 )
-
-func init() {
-	regexStringToNumber = regexp.MustCompile(`^(?i:((?:)|(?:\+)|(?:-))(\d+)(?:(?:)|(?:\.(\d+)))(?:(?:)|(?:(?:(?:x10\^)|(?:\*10\^)|(?:e))((?:(?:)|(?:\+)|(?:-))\d+))))$`)
-}
-
-// http://grokbase.com/p/gg/golang-nuts/148wvnxk76/go-nuts-re-test-for-an-integer-overflow
-func signedMulOverflows(a, b int64) bool {
-	if a == 0 || b == 0 || a == 1 || b == 1 {
-		return false
-	}
-	if a == mostNegative || b == mostNegative {
-		return true
-	}
-	c := a * b
-	return c/b != a
-}
 
 // QuoteString will surround a string in double quotes, and escape all double quotes within the string with a
 // backslash, and all backslashes with a backslash, as well.

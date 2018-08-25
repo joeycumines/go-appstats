@@ -77,7 +77,7 @@ func (s statsDService) Bucket(b interface{}) Bucket {
 	return statsDBucket{
 		service: s,
 		bucket: &BucketInfo{
-			Bucket: fmt.Sprintf("%v", b),
+			Bucket: fmt.Sprint(b),
 		},
 	}
 }
@@ -123,7 +123,7 @@ func (b statsDBucket) Histogram(value interface{}) {
 // applying QuoteString to it, in order to ensure that it parses properly.
 func (b statsDBucket) Unique(value interface{}) {
 	if bucket := b.bucketKey(); bucket != "" {
-		b.service.client.Unique(bucket, QuoteString(fmt.Sprintf("%v", value)))
+		b.service.client.Unique(bucket, QuoteString(fmt.Sprint(value)))
 	}
 }
 

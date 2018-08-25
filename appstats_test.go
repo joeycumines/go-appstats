@@ -18,13 +18,13 @@
 package appstats
 
 import (
-	"testing"
-	"fmt"
-	"math"
-	"time"
-	"github.com/go-test/deep"
-	"reflect"
 	"errors"
+	"fmt"
+	"github.com/go-test/deep"
+	"math"
+	"reflect"
+	"testing"
+	"time"
 )
 
 func TestBucketInfo_Tag_nilReceiver(t *testing.T) {
@@ -519,14 +519,14 @@ func TestTimingToDuration(t *testing.T) {
 		{ // multiplier overflows
 			Value:  "999999999999",
 			Multi:  time.Hour,
-			Result: 0,
-			Ok:     false,
+			Result: math.MaxInt64,
+			Ok:     true,
 		},
 		{ // overflows int64 on multi but passes number parse
 			Value:  "512438192184912 x 10 ^ 3",
 			Multi:  time.Minute,
-			Result: 0,
-			Ok:     false,
+			Result: math.MaxInt64,
+			Ok:     true,
 		},
 		{ // this one passes through
 			Value:  "512438192184912.1 x 10 ^ 3",
@@ -545,15 +545,15 @@ func TestTimingToDuration(t *testing.T) {
 		{
 			Value:  float64(9223372036854775807),
 			Multi:  time.Nanosecond,
-			Result: 0,
-			Ok:     false,
+			Result: math.MaxInt64,
+			Ok:     true,
 			Delta:  0,
 		},
 		{
-			Value:  float64(mostPositive) + 0.0001,
+			Value:  math.MaxInt64 + 0.0001,
 			Multi:  time.Nanosecond,
-			Result: 0,
-			Ok:     false,
+			Result: math.MaxInt64,
+			Ok:     true,
 			Delta:  0,
 		},
 		{ // very large number requiring parsing
@@ -573,15 +573,15 @@ func TestTimingToDuration(t *testing.T) {
 		{ // + detected out of bounds
 			Value:  `9223372036844775807.01E100`,
 			Multi:  time.Nanosecond,
-			Result: 0,
-			Ok:     false,
+			Result: math.MaxInt64,
+			Ok:     true,
 			Delta:  0,
 		},
 		{ // - detected out of bounds
 			Value:  `-9223372036844775808.01E100`,
 			Multi:  time.Nanosecond,
-			Result: 0,
-			Ok:     false,
+			Result: math.MinInt64,
+			Ok:     true,
 			Delta:  0,
 		},
 		{ // bad multi
@@ -601,7 +601,13 @@ func TestTimingToDuration(t *testing.T) {
 		{ // edge case test...
 			Value:  "-922337203685477580 E 1",
 			Multi:  time.Nanosecond,
-			Result: -9223372036854775808,
+			Result: -9223372036854775800,
+			Ok:     true,
+		},
+		{
+			Value:  "-922337203685477580 E -4",
+			Multi:  time.Nanosecond,
+			Result: -92233720368547,
 			Ok:     true,
 		},
 		{
@@ -619,16 +625,16 @@ func TestTimingToDuration(t *testing.T) {
 			Delta:  0,
 		},
 		{
-			Value:  float64(mostNegative) - 1222.1,
+			Value:  float64(math.MinInt64) - 1222.1,
 			Multi:  time.Nanosecond,
-			Result: 0,
-			Ok:     false,
+			Result: math.MinInt64,
+			Ok:     true,
 			Delta:  0,
 		},
 		{
-			Value:  float64(mostNegative) + 122.1,
+			Value:  float64(math.MinInt64) + 122.1,
 			Multi:  time.Nanosecond,
-			Result: -9223372036854775808,
+			Result: math.MinInt64,
 			Ok:     true,
 			Delta:  0,
 		},
@@ -652,6 +658,12 @@ func TestTimingToDuration(t *testing.T) {
 			Result: 0,
 			Ok:     true,
 			Delta:  0,
+		},
+		{
+			Value:  "924310ms",
+			Multi:  time.Hour,
+			Result: time.Millisecond * 924310,
+			Ok:     true,
 		},
 	}
 
@@ -677,28 +689,6 @@ func TestTimingToDuration(t *testing.T) {
 		if ok != testCase.Ok {
 			t.Error(name, "ok", "expected =", testCase.Ok, "actual =", ok)
 		}
-	}
-}
-
-func TestMostPositive(t *testing.T) {
-	var value int64 = mostPositive
-	if value <= 0 {
-		t.Fatal("unexpected value", value)
-	}
-	overflow := value + 1
-	if overflow >= 0 {
-		t.Fatal("unexpected overflow", overflow)
-	}
-}
-
-func TestMostNegative(t *testing.T) {
-	var value int64 = mostNegative
-	if value >= 0 {
-		t.Fatal("unexpected value", value)
-	}
-	overflow := value - 1
-	if overflow <= 0 {
-		t.Fatal("unexpected overflow", overflow)
 	}
 }
 
@@ -1195,4 +1185,14 @@ func (m *mockBucket) Unique(value interface{}) {
 
 func (m *mockBucket) Timing(value interface{}) {
 	panic("implement me")
+}
+
+func TestNewBucketKeyFunc_nil(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("expected a panic")
+		}
+	}()
+	NewBucketKeyFunc(nil)
+	t.Error("should not reach here")
 }

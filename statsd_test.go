@@ -18,8 +18,8 @@
 package appstats
 
 import (
-	"testing"
 	"fmt"
+	"testing"
 	"time"
 )
 
