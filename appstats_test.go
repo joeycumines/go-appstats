@@ -13,7 +13,7 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 
- */
+*/
 
 package appstats
 
@@ -22,6 +22,8 @@ import (
 	"fmt"
 	"github.com/go-test/deep"
 	"math"
+	"math/big"
+	"math/rand"
 	"reflect"
 	"testing"
 	"time"
@@ -122,276 +124,14 @@ func TestBucketInfo_Tag_existingValues(t *testing.T) {
 	}
 }
 
-func TestStringToNumber(t *testing.T) {
-	testCases := []struct {
-		Value       string
-		Integer     int64
-		Fractional  float64
-		Exponential int
-		Ok          bool
-	}{
-		{
-			Value:       ``,
-			Integer:     0,
-			Fractional:  0,
-			Exponential: 0,
-			Ok:          false,
-		},
-		{
-			Value:       `0`,
-			Integer:     0,
-			Fractional:  0,
-			Exponential: 0,
-			Ok:          true,
-		},
-		{
-			Value:       `1`,
-			Integer:     1,
-			Fractional:  0,
-			Exponential: 0,
-			Ok:          true,
-		},
-		{
-			Value:       `     1234    `,
-			Integer:     1234,
-			Fractional:  0,
-			Exponential: 0,
-			Ok:          true,
-		},
-		{
-			Value:       `   1,23 ,,,, 4   `,
-			Integer:     1234,
-			Fractional:  0,
-			Exponential: 0,
-			Ok:          true,
-		},
-		{
-			Value:       `-1234`,
-			Integer:     -1234,
-			Fractional:  0,
-			Exponential: 0,
-			Ok:          true,
-		},
-		{
-			Value:       `+1234`,
-			Integer:     1234,
-			Fractional:  0,
-			Exponential: 0,
-			Ok:          true,
-		},
-		{
-			Value:       `,  -  1  23 ,,,, 4   ,`,
-			Integer:     -1234,
-			Fractional:  0,
-			Exponential: 0,
-			Ok:          true,
-		},
-		{
-			Value:       `  +   ,1   2  34,`,
-			Integer:     1234,
-			Fractional:  0,
-			Exponential: 0,
-			Ok:          true,
-		},
-		{
-			Value:       `1234.5678`,
-			Integer:     1234,
-			Fractional:  0.5678,
-			Exponential: 0,
-			Ok:          true,
-		},
-		{
-			Value:       `-1234.5678`,
-			Integer:     -1234,
-			Fractional:  -0.5678,
-			Exponential: 0,
-			Ok:          true,
-		},
-		{
-			Value:       `+1234.5678`,
-			Integer:     1234,
-			Fractional:  0.5678,
-			Exponential: 0,
-			Ok:          true,
-		},
-		{
-			Value:       `1234.-5678`,
-			Integer:     0,
-			Fractional:  0,
-			Exponential: 0,
-			Ok:          false,
-		},
-		{
-			Value:       `   1234.56,78   `,
-			Integer:     1234,
-			Fractional:  0.5678,
-			Exponential: 0,
-			Ok:          true,
-		},
-		{
-			Value:       `1234.0`,
-			Integer:     1234,
-			Fractional:  0,
-			Exponential: 0,
-			Ok:          true,
-		},
-		{
-			Value:       `0.5678`,
-			Integer:     0,
-			Fractional:  0.5678,
-			Exponential: 0,
-			Ok:          true,
-		},
-		{
-			Value:       `-0.5678`,
-			Integer:     0,
-			Fractional:  -0.5678,
-			Exponential: 0,
-			Ok:          true,
-		},
-		{
-			Value:       `-0.0`,
-			Integer:     0,
-			Fractional:  0,
-			Exponential: 0,
-			Ok:          true,
-		},
-		{
-			Value:       `10.`,
-			Integer:     0,
-			Fractional:  0,
-			Exponential: 0,
-			Ok:          false,
-		},
-		{
-			Value:       `10.000000000000000000000001`,
-			Integer:     10,
-			Fractional:  0.000000000000000000000001,
-			Exponential: 0,
-			Ok:          true,
-		},
-		{
-			Value:       `-10.000000000000000000000001`,
-			Integer:     -10,
-			Fractional:  -0.000000000000000000000001,
-			Exponential: 0,
-			Ok:          true,
-		},
-		{
-			Value:       `+10.000000000000000000000001`,
-			Integer:     10,
-			Fractional:  0.000000000000000000000001,
-			Exponential: 0,
-			Ok:          true,
-		},
-		{
-			Value:       `   ,  ,,,,, +, 10  . 0 0 0 00 010 00 000 00000,0 0 00001   ,,`,
-			Integer:     10,
-			Fractional:  0.0000001000000000000000001,
-			Exponential: 0,
-			Ok:          true,
-		},
-		{
-			Value:       `10e+17`,
-			Integer:     10,
-			Fractional:  0,
-			Exponential: 17,
-			Ok:          true,
-		},
-		{
-			Value:       `10E17`,
-			Integer:     10,
-			Fractional:  0,
-			Exponential: 17,
-			Ok:          true,
-		},
-		{
-			Value:       `-213148214123.213   x 10 ^  -12`,
-			Integer:     -213148214123,
-			Fractional:  -0.213,
-			Exponential: -12,
-			Ok:          true,
-		},
-		{
-			Value:       `-213148214123.213   * 10 ^  -12`,
-			Integer:     -213148214123,
-			Fractional:  -0.213,
-			Exponential: -12,
-			Ok:          true,
-		},
-		{
-			Value:       `,  - , 10.  0 1,E,1 ,7 ,, `,
-			Integer:     -10,
-			Fractional:  -0.01,
-			Exponential: 17,
-			Ok:          true,
-		},
-		{
-			Value:       `,  - , 10.  0 1,E,-1 ,7 ,, `,
-			Integer:     -10,
-			Fractional:  -0.01,
-			Exponential: -17,
-			Ok:          true,
-		},
-		{
-			Value:       `10e+17.01`,
-			Integer:     0,
-			Fractional:  0,
-			Exponential: 0,
-			Ok:          false,
-		},
+func TestStringToRat(t *testing.T) {
+	if r, ok := stringToRat(`    ,  999,9 12,,,,37  , 2, 1    e -,8917,236 ,,,,       `); !ok {
+		t.Error(r, ok)
+	} else if e, _ := new(big.Rat).SetString(`9999123721e-8917236`); e.Cmp(r) != 0 {
+		t.Error(e, r)
 	}
-
-	// add some more ok cases via fmt.Sprintf
-	addNum := func(n interface{}, integer int64, fractional float64, exponential int) {
-		testCases = append(
-			testCases,
-			struct {
-				Value       string
-				Integer     int64
-				Fractional  float64
-				Exponential int
-				Ok          bool
-			}{
-				Value:       fmt.Sprintf("%v", n),
-				Integer:     integer,
-				Fractional:  fractional,
-				Exponential: exponential,
-				Ok:          true,
-			},
-		)
-	}
-	addNum(uint32(123), 123, 0, 0)
-	addNum(float64(0.00000000000000000000000000000000001), 1, 0, -35)
-	if math.Pow10(-35) != 0.00000000000000000000000000000000001 {
-		t.Fatal("bad test...")
-	}
-	addNum(float64(98912315772500247140000120371765768091432.90133312), 9, 0.891231577250024, 40)
-	if diff := math.Abs(98912315772500247140000120371765768091432.90133312 - (float64(9.891231577250024) * math.Pow10(40))); diff > 0 {
-		t.Fatal("bad diff", diff)
-	}
-	addNum(float64(-98912315772500247140000120371765768091432.90133312), -9, -0.891231577250024, 40)
-
-	for i, testCase := range testCases {
-		name := fmt.Sprintf("TestStringToNumber_#%d", i+1)
-
-		integer, fractional, exponential, ok := StringToNumber(testCase.Value)
-
-		if integer != testCase.Integer {
-			t.Error(name, "integer", "expected =", testCase.Integer, "actual =", integer)
-		}
-
-		if fractional != testCase.Fractional {
-			t.Error(name, "fractional", "expected =", testCase.Fractional, "actual =", fractional)
-		}
-
-		if exponential != testCase.Exponential {
-			t.Error(name, "exponential", "expected =", testCase.Exponential, "actual =", exponential)
-		}
-
-		if ok != testCase.Ok {
-			t.Error(name, "ok", "expected =", testCase.Ok, "actual =", ok)
-		}
+	if r, ok := stringToRat(``); ok || r != nil {
+		t.Error(r, ok)
 	}
 }
 
@@ -507,14 +247,14 @@ func TestTimingToDuration(t *testing.T) {
 		{ // + overflow
 			Value:  "9223372036854775808",
 			Multi:  time.Nanosecond,
-			Result: 0,
-			Ok:     false,
+			Result: math.MaxInt64,
+			Ok:     true,
 		},
 		{ // - overflow
 			Value:  "-9223372036854775809",
 			Multi:  time.Nanosecond,
-			Result: 0,
-			Ok:     false,
+			Result: math.MinInt64,
+			Ok:     true,
 		},
 		{ // multiplier overflows
 			Value:  "999999999999",
@@ -523,13 +263,13 @@ func TestTimingToDuration(t *testing.T) {
 			Ok:     true,
 		},
 		{ // overflows int64 on multi but passes number parse
-			Value:  "512438192184912 x 10 ^ 3",
+			Value:  "512438192184912 E 3",
 			Multi:  time.Minute,
 			Result: math.MaxInt64,
 			Ok:     true,
 		},
 		{ // this one passes through
-			Value:  "512438192184912.1 x 10 ^ 3",
+			Value:  "512438192184912.1 e 3",
 			Multi:  time.Nanosecond,
 			Result: 512438192184912100,
 			Ok:     true,
@@ -1153,10 +893,10 @@ func TestTagMap_all(t *testing.T) {
 }
 
 type mockBucket struct {
-	tag func(key interface{}, values ... interface{}) Bucket
+	tag func(key interface{}, values ...interface{}) Bucket
 }
 
-func (m *mockBucket) Tag(key interface{}, values ... interface{}) Bucket {
+func (m *mockBucket) Tag(key interface{}, values ...interface{}) Bucket {
 	if m != nil && m.tag != nil {
 		return m.tag(key, values...)
 	}
@@ -1195,4 +935,31 @@ func TestNewBucketKeyFunc_nil(t *testing.T) {
 	}()
 	NewBucketKeyFunc(nil)
 	t.Error("should not reach here")
+}
+
+func benchmarkTimingToDuration(b *testing.B, fn func(value interface{}, multi time.Duration) (d time.Duration, ok bool)) {
+	for n := 0; n < b.N; n++ {
+		b.StopTimer()
+		f := new(big.Float).
+			SetPrec(124).
+			SetInt64(rand.Int63())
+		f.Mul(f, new(big.Float).SetInt64(rand.Int63()))
+		f.Mul(f, new(big.Float).Mul(f, new(big.Float).SetFloat64(rand.Float64())))
+		if rand.Int63()%2 == 0 {
+			f.Neg(f)
+		}
+		b.StartTimer()
+		d, ok := fn(fmt.Sprintf(",,,,,   %v    ,,,", f), time.Nanosecond)
+		b.StopTimer()
+		if !ok {
+			b.Error(n, f, d, ok)
+		} else if i, _ := f.Int64(); i != int64(d) {
+			b.Error(n, f, d, time.Duration(i))
+		}
+		b.StartTimer()
+	}
+}
+
+func BenchmarkTimingToDuration(b *testing.B) {
+	benchmarkTimingToDuration(b, TimingToDuration)
 }

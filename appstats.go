@@ -13,7 +13,7 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 
- */
+*/
 
 // Package appstats provides an adaptable wrapper for stats libraries.
 package appstats
@@ -25,10 +25,8 @@ import (
 	"io"
 	"math/big"
 	"reflect"
-	"regexp"
 	"runtime"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -47,7 +45,7 @@ type (
 	// Bucket models where to send some stats.
 	Bucket interface {
 		// Tag can be used to aggregate stats, and returns a new bucket appended with the desired tags.
-		Tag(key interface{}, values ... interface{}) Bucket
+		Tag(key interface{}, values ...interface{}) Bucket
 		// Count models stats in the form of a running total, e.g. number of errors, which could be used to calculate
 		// number of errors in the last 5 minutes, for example, n should be a number.
 		Count(n interface{})
@@ -243,7 +241,7 @@ func NewStatsDService(
 
 // Tag values to a key (or just ensures the key exists, if there are no values), note that the returned value will
 // not modify the value of the source but MAY NOT be a complete deep copy.
-func (b *BucketInfo) Tag(key interface{}, values ... interface{}) *BucketInfo {
+func (b *BucketInfo) Tag(key interface{}, values ...interface{}) *BucketInfo {
 	keyStr := fmt.Sprint(key)
 
 	r := &BucketInfo{
@@ -322,122 +320,52 @@ func TimingToDuration(value interface{}, multi time.Duration) (d time.Duration, 
 		return
 	}
 
-	switch v := value.(type) {
+	switch value := value.(type) {
 	case time.Time:
-		d, ok = timeNow().Sub(v), true
-
+		d, ok = timeNow().Sub(value), true
 		return
 
 	case time.Duration:
-		d, ok = v, true
-
+		d, ok = value, true
 		return
 	}
 
+	// attempt to normalise the value via string using math/big
 	var (
-		valueString = fmt.Sprint(value)
-		integer     int64
-		fractional  float64
-		exponential int
+		s = fmt.Sprint(value)
+		r *big.Rat
 	)
-
-	if integer, fractional, exponential, ok = StringToNumber(valueString); !ok {
+	if r, ok = stringToRat(s); !ok {
 		// fallback to parsing as time.Duration
 		var err error
-		d, err = time.ParseDuration(valueString)
+		d, err = time.ParseDuration(s)
 		ok = err == nil
 		return
 	}
 
-	// start with the integer component
-	f := new(big.Float).
-		SetInt64(integer)
-
-	// add the fractional component
-	f.Add(f, big.NewFloat(fractional))
-
-	// apply any exponential component
-	if exponential < 0 {
-		var e *big.Float
-		e, ok = new(big.Float).
-			SetString("1" + strings.Repeat("0", exponential*-1))
-		if !ok {
-			return
-		}
-		f.Quo(f, e)
-	} else if exponential > 0 {
-		var e *big.Float
-		e, ok = new(big.Float).
-			SetString("1" + strings.Repeat("0", exponential))
-		if !ok {
-			return
-		}
-		f.Mul(f, e)
-	}
-
 	// apply the multiplier
-	f.Mul(f, new(big.Float).SetInt64(int64(multi)))
-
-	// convert the big.Float to an int64 (trucs towards zero)
-	i, _ := f.Int64()
-
+	r.Mul(r, new(big.Rat).SetInt64(int64(multi)))
+	// convert to big.Float then to an int64 (trucs towards zero)
+	i, _ := new(big.Float).SetRat(r).Int64()
 	// and that's our timing
 	d = time.Duration(i)
-
 	return
 }
 
-// StringToNumber converts a string to a number, separating out like integer.fractional x 10 ^ exponential, where
-// any sign will be included on both integer and fractional, and (x10^, e, *10^) are all supported (case insensitive),
-// note that any commas or whitespace will be stripped before parsing. The result for ok will be false if parsing
-// failed - e.g. if the integer segment was too large for an int64, or it did not match the expected format.
-func StringToNumber(s string) (integer int64, fractional float64, exponential int, ok bool) {
-	s = strings.Map(
+func stringToRat(s string) (*big.Rat, bool) {
+	return new(big.Rat).SetString(strings.Map(
 		func(r rune) rune {
-			if unicode.IsSpace(r) || r == ',' {
+			if r == ',' || unicode.IsSpace(r) {
 				return -1
 			}
 			return r
 		},
 		s,
-	)
-	sm := regexStringToNumber.FindStringSubmatch(s)
-	smLen := len(sm)
-	if smLen == 0 {
-		return
-	}
-	ok = true
-	var sign string
-	if smLen > 1 {
-		sign = sm[1]
-	}
-	if smLen > 2 && sm[2] != "" {
-		if v, err := strconv.ParseInt(sign+sm[2], 10, 64); err != nil {
-			ok = false
-		} else {
-			integer = v
-		}
-	}
-	if smLen > 3 && sm[3] != "" {
-		if v, err := strconv.ParseFloat(sign+"0."+sm[3], 64); err != nil {
-			ok = false
-		} else {
-			fractional = v
-		}
-	}
-	if smLen > 4 && sm[4] != "" {
-		if v, err := strconv.Atoi(sm[4]); err != nil {
-			ok = false
-		} else {
-			exponential = v
-		}
-	}
-	return
+	))
 }
 
 var (
-	regexStringToNumber = regexp.MustCompile(`^(?i:((?:)|(?:\+)|(?:-))(\d+)(?:(?:)|(?:\.(\d+)))(?:(?:)|(?:(?:(?:x10\^)|(?:\*10\^)|(?:e))((?:(?:)|(?:\+)|(?:-))\d+))))$`)
-	timeNow             = time.Now
+	timeNow = time.Now
 )
 
 // QuoteString will surround a string in double quotes, and escape all double quotes within the string with a

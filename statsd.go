@@ -13,7 +13,7 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 
- */
+*/
 
 package appstats
 
@@ -84,7 +84,7 @@ func (s statsDService) Bucket(b interface{}) Bucket {
 
 // Tag returns a bucket with the tag and possibly values appended, string formatting all args with `%v`, note that
 // this WILL NOT modify the original bucket.
-func (b statsDBucket) Tag(key interface{}, values ... interface{}) Bucket {
+func (b statsDBucket) Tag(key interface{}, values ...interface{}) Bucket {
 	return statsDBucket{
 		service: b.service,
 		bucket:  b.bucket.Tag(key, values...),

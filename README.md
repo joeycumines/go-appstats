@@ -3,7 +3,8 @@
 > Test Coverage: 97.8%
 
 What started as just a very simple interface wrapper for
-[github.com/alexcesaro/statsd](https://github.com/alexcesaro/statsd), to provide proper support for InfluxDB tags, and
+[github.com/alexcesaro/statsd](https://github.com/alexcesaro/statsd) (I am also maintaining
+[a fork](https://github.com/joeycumines/statsd) with some tweaks), to provide proper support for InfluxDB tags, and
 to make it easier to swap out for another stats implementation / extend as necessary, now also
 includes some very useful parsing and sanitisation tools, and is designed to be extensible and unobtrusive, with the
 `appstats.Tagger` definition providing an option pattern very useful for implementing custom tag values in a way that
@@ -20,5 +21,5 @@ doesn't require frequent breaking changes.
   `appstats.NewBucketKeyFunc`, and _afaik/imo_ matches their best practices as well as possible
 - Datadog's "tagging best practices" are used as part of the InfluxDB tagging support, and implemented by
   `appstats.SanitiseKey`
-- `appstats.StringToNumber` and `appstats.TimingToDuration` are provided to deal with the surprisingly very tricky
-  problem of supporting time series data in generic formats
+- `appstats.TimingToDuration` are provided to deal with the surprisingly very tricky problem of supporting time series
+  data in generic formats
